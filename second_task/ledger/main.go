@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,7 +69,7 @@ func LoadBudgets(r io.Reader) error {
 	err := json.NewDecoder(r).Decode(&loadedBudgets)
 
 	if err != nil {
-		return errors.New("budget file can not be parsed")
+		return fmt.Errorf("budget file can not be parsed: %w", err)
 	}
 
 	for _, budget := range loadedBudgets {
@@ -108,17 +109,33 @@ func main() {
 	}
 	defer f.Close()
 
-	err = LoadBudgets(f)
+	err = LoadBudgets(bufio.NewReader(f))
+
 	if err != nil {
 		fmt.Println("file can not be read:", err)
 		return
 	}
 
-	AddTransaction(Transaction{1, 3000.0, "food", "покупка", "2026-10-01"})
-	AddTransaction(Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
-	AddTransaction(Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
-	AddTransaction(Transaction{3, 0, "profit", "profit", "2026-10-11"})
-	AddTransaction(Transaction{4, 50.0, "profit", "profit", "2026-10-12"})
+	err = AddTransaction(Transaction{1, 3000.0, "food", "покупка", "2026-10-01"})
+	if err != nil {
+		fmt.Println("Transaction has been rejected:", err)
+	}
+	err = AddTransaction(Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
+	if err != nil {
+		fmt.Println("Transaction has been rejected:", err)
+	}
+	err = AddTransaction(Transaction{3, 60000.0, "electronics", "profit", "2026-10-11"})
+	if err != nil {
+		fmt.Println("Transaction has been rejected:", err)
+	}
+	err = AddTransaction(Transaction{4, 0, "profit", "profit", "2026-10-11"})
+	if err != nil {
+		fmt.Println("Transaction has been rejected:", err)
+	}
+	err = AddTransaction(Transaction{5, 50.0, "profit", "profit", "2026-10-12"})
+	if err != nil {
+		fmt.Println("Transaction has been rejected:", err)
+	}
 
 	fmt.Println(ListTransactions())
 }

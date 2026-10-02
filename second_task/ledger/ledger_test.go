@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func resetState() {
 	transactions = []Transaction{}
@@ -81,5 +84,44 @@ func TestAddTransactionNoBudgetForCategory(t *testing.T) {
 	// Для категории без бюджета лимита нет.
 	if err := AddTransaction(Transaction{ID: 1, Amount: 1000000, Category: "asset"}); err != nil {
 		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestSetBudgetUpdatesLimit(t *testing.T) {
+	resetState()
+
+	SetBudget(Budget{Category: "food", Limit: 100, Period: "2026/10"})
+	SetBudget(Budget{Category: "food", Limit: 500, Period: "2026/10"})
+
+	if len(budgets) != 1 {
+		t.Errorf("expected 1 budget, got %d", len(budgets))
+	}
+	if budgets["food"].Limit != 500 {
+		t.Errorf("expected limit 500, got %v", budgets["food"].Limit)
+	}
+}
+
+func TestLoadBudgets(t *testing.T) {
+	resetState()
+
+	input := `[{"Category": "food", "Limit": 5000, "Period": "2026/10"},
+	           {"Category": "furniture", "Limit": 200000, "Period": "2026/10"}]`
+	if err := LoadBudgets(strings.NewReader(input)); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(budgets) != 2 {
+		t.Errorf("expected 2 budgets, got %d", len(budgets))
+	}
+	if budgets["furniture"].Limit != 200000 {
+		t.Errorf("unexpected furniture limit: %v", budgets["furniture"].Limit)
+	}
+
+	// Некорректный JSON: ожидается ошибка, бюджеты не меняются
+	resetState()
+	if err := LoadBudgets(strings.NewReader("not json")); err == nil {
+		t.Error("expected parse error, got nil")
+	}
+	if len(budgets) != 0 {
+		t.Errorf("expected no budgets after failed load, got %d", len(budgets))
 	}
 }
