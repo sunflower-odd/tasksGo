@@ -114,8 +114,9 @@ func main() {
 		return
 	}
 
-	AddTransaction(Transaction{1, 30.0, "asset", "покупка", "2026-10-01"})
-	AddTransaction(Transaction{2, 40.0, "profit", "profit", "2026-10-11"})
+	AddTransaction(Transaction{1, 3000.0, "food", "покупка", "2026-10-01"})
+	AddTransaction(Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
+	AddTransaction(Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
 	AddTransaction(Transaction{3, 0, "profit", "profit", "2026-10-11"})
 	AddTransaction(Transaction{4, 50.0, "profit", "profit", "2026-10-12"})
 

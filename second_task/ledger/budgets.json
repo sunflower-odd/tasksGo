@@ -1,0 +1,6 @@
+[
+  {"Category": "food", "Limit": 5000, "Period": "2026/10"},
+  {"Category": "electronics", "Limit": 100000, "Period": "2026/10"},
+  {"Category": "furniture", "Limit": 200000, "Period": "2026/10"},
+  {"Category": "profit", "Limit": 80, "Period": "2026/10"}
+]
