@@ -27,6 +27,36 @@ type Budget struct {
 
 var budgets map[string]Budget
 
+type Validatable interface {
+	Validate() error
+}
+
+func (tx Transaction) Validate() error {
+	if tx.Amount <= 0 {
+		return errors.New("Amount must be greater than 0!")
+	}
+
+	if tx.Category == "" {
+		return errors.New("Category should not be empty!")
+	}
+
+	return nil
+
+}
+
+func (b Budget) Validate() error {
+	if b.Limit <= 0 {
+		return errors.New("Limit must be greater than 0!")
+	}
+
+	if b.Category == "" {
+		return errors.New("Category should not be empty!")
+	}
+
+	return nil
+
+}
+
 func sumTransactions(category string) float64 {
 	var total float64
 
@@ -40,8 +70,12 @@ func sumTransactions(category string) float64 {
 }
 
 func AddTransaction(tx Transaction) error {
-	if tx.Amount == 0 {
-		return errors.New("Amount must not equal 0!")
+	// if tx.Amount == 0 {
+	// 	return errors.New("Amount must not equal 0!")
+	// }
+
+	if err := tx.Validate(); err != nil {
+		return err
 	}
 
 	budget, ok := budgets[tx.Category]
@@ -60,8 +94,13 @@ func ListTransactions() []Transaction {
 	return transactions
 }
 
-func SetBudget(b Budget) {
+func SetBudget(b Budget) error {
+	if err := b.Validate(); err != nil {
+		return err
+	}
+
 	budgets[b.Category] = b
+	return nil
 }
 
 func LoadBudgets(r io.Reader) error {
@@ -73,7 +112,17 @@ func LoadBudgets(r io.Reader) error {
 	}
 
 	for _, budget := range loadedBudgets {
-		SetBudget(budget)
+		if err := SetBudget(budget); err != nil {
+			return fmt.Errorf("invalid budget for category %q: %w", budget.Category, err)
+		}
+	}
+	return nil
+}
+
+func CheckValid(v Validatable) error {
+	err := v.Validate()
+	if err != nil {
+		return fmt.Errorf("Object could not be validated: %w", err)
 	}
 	return nil
 }
@@ -83,6 +132,31 @@ func main() {
 
 	transactions = []Transaction{}
 	budgets = make(map[string]Budget)
+
+	tx := Transaction{
+		ID:       10,
+		Amount:   100,
+		Category: "food",
+		Date:     "2026-10-10",
+	}
+
+	budget := Budget{
+		Category: "food",
+		Limit:    5000,
+		Period:   "2026/10",
+	}
+
+	if err := CheckValid(tx); err != nil {
+		fmt.Println("Transaction validation failed:", err)
+	} else {
+		fmt.Println("Transaction is valid")
+	}
+
+	if err := CheckValid(budget); err != nil {
+		fmt.Println("Budget validation failed:", err)
+	} else {
+		fmt.Println("Budget is valid")
+	}
 
 	SetBudget(Budget{
 		Category: "food",
