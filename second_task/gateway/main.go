@@ -1,6 +1,9 @@
 package main
 
-import "net/http"
+import (
+	"gateway/internal/api"
+	"net/http"
+)
 
 func checkHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -8,7 +11,14 @@ func checkHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/ping", checkHealth)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /ping", checkHealth)
+	api.RegisterRoutes(mux)
 
-	http.ListenAndServe(":8080", nil)
+	handler := api.Logger(mux) // логирование
+
+	err := http.ListenAndServe(":8083", handler)
+	if err != nil {
+		panic(err)
+	}
 }
