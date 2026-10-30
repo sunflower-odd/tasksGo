@@ -34,3 +34,22 @@ go test -v ./...     # подробный вывод
 go vet ./...         # статическая проверка
 ```
 
+Тесты в `ledger_test.go`: табличные проверки `Validate()` для транзакций и бюджетов
+(параллельные, `t.Parallel()`) и сценарий превышения бюджета. Перед каждым тестом,
+который меняет данные, вызывается `Reset()`, чтобы тесты не влияли друг на друга.
+
+Перед первым запуском нужна зависимость testify:
+
+```bash
+go get github.com/stretchr/testify
+```
+
+### Покрытие
+
+```bash
+go test ./... -cover -coverprofile=cover.out
+go tool cover -html=cover.out -o cover.html   # открыть cover.html в браузере
+```
+
+**Покрытие тестами пакета `ledger` ~54%.**
+

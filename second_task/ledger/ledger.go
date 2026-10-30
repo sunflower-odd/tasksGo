@@ -30,6 +30,11 @@ type Validatable interface {
 	Validate() error
 }
 
+func Reset() {
+	transactions = []Transaction{}
+	budgets = make(map[string]Budget)
+}
+
 func (tx Transaction) Validate() error {
 	if tx.Amount <= 0 {
 		return errors.New("Amount must be greater than 0!")

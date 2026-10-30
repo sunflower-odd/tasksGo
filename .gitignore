@@ -1,0 +1,3 @@
+# Отчёты о покрытии тестами (генерируются go test / go tool cover)
+cover.out
+cover.html
