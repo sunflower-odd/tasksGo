@@ -2,13 +2,37 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"ledger"
+	"ledger/internal/cache"
+	"ledger/internal/db"
 	"os"
 )
 
 func main() {
 	fmt.Println("Ledger service started")
+
+	conn, err := db.Connect()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not connect to db, error: %v\n", err)
+		os.Exit(1)
+	}
+
+	defer conn.Close()
+
+	ledger.InitDB(conn)
+	fmt.Println("Connected to database")
+
+	rdb, err := cache.Connect()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not connect to redis, error: %v\n", err)
+		os.Exit(1)
+	}
+	defer rdb.Close()
+	fmt.Println("Connected to Redis")
+
+	ledger.InitCache(rdb)
 
 	tx := ledger.Transaction{
 		ID:       10,
@@ -89,4 +113,8 @@ func main() {
 	}
 
 	fmt.Println(ledger.ListTransactions())
+
+	ctx := context.Background()
+	ledger.GetReportSummary(ctx, "2026-01-01", "2026-05-01")
+	ledger.GetReportSummary(ctx, "2026-01-01", "2026-05-01")
 }

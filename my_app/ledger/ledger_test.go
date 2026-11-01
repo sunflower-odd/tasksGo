@@ -1,10 +1,38 @@
 package ledger
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// testCategory подключается к БД (или пропускает тест, если БД недоступна)
+// и возвращает уникальную категорию, которая удаляется после теста.
+func testCategory(t *testing.T) string {
+	t.Helper()
+	if err := ensureConn(); err != nil {
+		t.Skipf("database is not available: %v", err)
+	}
+	category := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	t.Cleanup(func() { _ = DeleteCategory(category) })
+	return category
+}
+
+func countByCategory(t *testing.T, category string) int {
+	t.Helper()
+	list, err := ListTransactions()
+	require.NoError(t, err)
+	n := 0
+	for _, tx := range list {
+		if tx.Category == category {
+			n++
+		}
+	}
+	return n
+}
 
 func TestTransactionValidate(t *testing.T) {
 	t.Parallel()
@@ -161,19 +189,18 @@ func TestBudgetValidate(t *testing.T) {
 func TestBudgetLimit(t *testing.T) {
 	Reset()
 	t.Cleanup(Reset)
+	category := testCategory(t)
 
-	err := SetBudget(Budget{Category: "еда", Limit: 5000})
+	err := SetBudget(Budget{Category: category, Limit: 5000})
 	assert.NoError(t, err)
 
 	// в пределах лимита
-	err = AddTransaction(Transaction{Amount: 3000, Category: "еда"})
+	err = AddTransaction(Transaction{Amount: 3000, Category: category, Date: "2026-10-30"})
 	assert.NoError(t, err)
+	assert.Equal(t, 1, countByCategory(t, category))
 
-	before := len(ListTransactions())
-
-	// 3000 + 2500 > 5000 — превышение
-	err = AddTransaction(Transaction{Amount: 2500, Category: "еда"})
+	// 3000 + 2500 > 5000 — превышение, запись не добавляется
+	err = AddTransaction(Transaction{Amount: 2500, Category: category, Date: "2026-10-30"})
 	assert.ErrorIs(t, err, ErrBudgetExceeded)
-
-	assert.Len(t, ListTransactions(), before)
+	assert.Equal(t, 1, countByCategory(t, category))
 }

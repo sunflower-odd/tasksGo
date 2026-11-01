@@ -3,14 +3,27 @@
 Простой HTTP-сервис для учёта транзакций и бюджетов (DTO-слой `internal/api`
 поверх доменной библиотеки `ledger`).
 
+Gateway обращается к тем же HTTP-эндпоинтам, что и раньше, — контракты не изменились.
+Разница внутри: **Ledger теперь хранит данные в PostgreSQL** (данные переживают перезапуск),
+а **отчёты кешируются в Redis** на 30 секунд. Добавлен эндпоинт отчёта
+`GET /api/reports/summary`. Подключение к БД и Redis ledger выполняет сам при первом запросе,
+код gateway для этого не нужен.
+
+## Подготовка
+
+1. Запустить PostgreSQL и Redis, применить миграции — см. `../ledger/README.md` (разделы 1–3).
+2. Заполнить `../ledger/.env` (`DATABASE_URL`, `REDIS_ADDR`, `REDIS_DB`, `REDIS_PASSWORD`).
+
 ## Запуск
 
 ```bash
-cd second_task/gateway
+cd my_app/gateway
+set -a; source ../ledger/.env; set +a   # переменные подключения к PostgreSQL и Redis
 go run .
 ```
 
-Сервис слушает порт **8083**. Остановка: `Ctrl+C`.
+Сервис слушает порт **8083**. Остановка: `Ctrl+C`. При первом запросе к `/api/...`
+в логе появятся `Connected to database` и `Connected to Redis`.
 
 ## Эндпоинты
 
@@ -21,6 +34,7 @@ go run .
 | GET   | `/api/transactions`    | список всех транзакций                      |
 | POST  | `/api/budgets`         | создать (или обновить) бюджет по категории  |
 | GET   | `/api/budgets`         | список всех бюджетов                        |
+| GET   | `/api/reports/summary` | суммы трат по категориям за период `?from=&to=` (кеш в Redis) |
 
 Все ответы `/api/...` отдаются с заголовком
 `Content-Type: application/json; charset=utf-8`.
@@ -30,6 +44,7 @@ go run .
 - `400 Bad Request` — некорректный JSON или ошибка валидации (например,
   `amount <= 0` или пустая `category`);
 - `409 Conflict` — превышение лимита бюджета по категории;
+- `400 Bad Request` для отчёта — нет `from`/`to`, даты не в формате `YYYY-MM-DD` или `from` позже `to`;
 - `500 Internal Server Error` — прочие непредвиденные ошибки.
 
 ## Примеры cURL
@@ -86,6 +101,48 @@ curl -i http://localhost:8083/api/budgets
 
 `200 OK`, тело — массив `BudgetResponse` (пустой список выглядит как `[]`).
 
+### Отчёт по категориям и эффект кеша
+
+Выполните запрос **дважды подряд** (в пределах 30 секунд):
+
+```bash
+curl -i "http://localhost:8083/api/reports/summary?from=2026-10-01&to=2026-10-31"
+curl -i "http://localhost:8083/api/reports/summary?from=2026-10-01&to=2026-10-31"
+```
+
+Оба ответа — `200 OK` с одинаковым телом:
+
+```json
+{"from":"2026-10-01","to":"2026-10-31","totals":{"electronics":60000,"food":3000,"profit":50,"travel":4000}}
+```
+
+В логе gateway видно, откуда взят результат:
+
+```
+cache miss: report:summary:2026-10-01:2026-10-31
+cache set: report:summary:2026-10-01:2026-10-31 TTL 30s
+GET /api/reports/summary 3.1ms
+cache hit: report:summary:2026-10-01:2026-10-31
+GET /api/reports/summary 450µs
+```
+
+Через 30 секунд ключ истекает, и следующий запрос снова будет `cache miss`.
+Посмотреть ключ и оставшееся время жизни:
+
+```bash
+docker exec -it cashcraft-redis redis-cli TTL report:summary:2026-10-01:2026-10-31
+```
+
+### Проверка, что данные лежат в PostgreSQL
+
+```bash
+docker exec -it cashapp-db psql -U postgres -d cashapp -c "SELECT * FROM budgets;"
+docker exec -it cashapp-db psql -U postgres -d cashapp -c "SELECT * FROM expenses ORDER BY id;"
+```
+
+После перезапуска gateway (`Ctrl+C`, `go run .`) `GET /api/budgets` и
+`GET /api/transactions` возвращают те же записи.
+
 ### Пример ошибки: превышение бюджета
 
 Если сумма транзакций по категории превысит `limit` установленного бюджета,
@@ -121,10 +178,11 @@ curl -i -X POST http://localhost:8083/api/transactions \
 Они собирают роутер через `RegisterRoutes` и отправляют запросы с помощью
 `httptest.NewRequest` + `httptest.NewRecorder` (настоящий порт не нужен).
 Проверяются коды ответов (201, 200, 400, 409), JSON-тело и заголовок `Content-Type`.
-Перед каждым сценарием вызывается `ledger.Reset()`.
+Перед каждым сценарием вызывается `ledger.Reset()`. Сценарии, которые пишут данные,
+требуют запущенного PostgreSQL и загруженного `../ledger/.env`.
 
 ```bash
-cd second_task/gateway
+cd my_app/gateway
 go mod tidy          # один раз, подтянуть testify
 go test -v ./...     # подробный вывод, видны подтесты ok / exceeded / bad_json
 ```
@@ -138,11 +196,11 @@ go tool cover -html=cover.out -o cover.html   # открыть cover.html в б�
 
 **Покрытие тестами пакета `internal/api` ~66%.**
 
-Общий отчёт по обоим модулям можно получить из `second_task`
+Общий отчёт по обоим модулям можно получить из `my_app`
 (там `go.work`, поэтому `./...` из этой папки не работает — пути указываются явно):
 
 ```bash
-cd second_task
+cd my_app
 go test ./ledger/... ./gateway/... -coverprofile=cover.out
 go tool cover -html=cover.out -o cover.html
 ```

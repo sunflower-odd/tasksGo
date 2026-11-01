@@ -24,7 +24,7 @@ func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		next.ServeHTTP(w, r) // передаём запрос дальше по цепочке
+		next.ServeHTTP(w, r) // передаём запрос дальше
 
 		duration := time.Since(start)
 		log.Printf("%s %s %s", r.Method, r.URL.Path, duration)
@@ -89,8 +89,14 @@ func createBudget(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTransactions(w http.ResponseWriter, r *http.Request) {
+	transactions, err := ledger.ListTransactions()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	resp := []TransactionResponse{}
-	for _, tx := range ledger.ListTransactions() {
+	for _, tx := range transactions {
 		resp = append(resp, TransactionFromDomain(tx))
 	}
 
@@ -98,10 +104,39 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBudgets(w http.ResponseWriter, r *http.Request) {
+	budgets, err := ledger.ListBudgets()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	resp := []BudgetResponse{}
-	for _, b := range ledger.ListBudgets() {
+	for _, b := range budgets {
 		resp = append(resp, BudgetFromDomain(b))
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// GET /api/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Суммы трат по категориям за период. Результат кешируется в Redis внутри ledger.
+func getReportSummary(w http.ResponseWriter, r *http.Request) {
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	if from == "" || to == "" {
+		writeError(w, http.StatusBadRequest, "query parameters from and to are required (YYYY-MM-DD)")
+		return
+	}
+
+	report, err := ledger.GetReportSummary(r.Context(), from, to)
+	if err != nil {
+		if errors.Is(err, ledger.ErrInvalidPeriod) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, report)
 }
