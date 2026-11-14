@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"ledger"
@@ -16,9 +17,21 @@ import (
 
 const jsonCT = "application/json; charset=utf-8"
 
-func newTestMux() *http.ServeMux {
+// получает сервис через фабрику ledger
+func newTestService(t *testing.T) ledger.Service {
+	t.Helper()
+	svc, closeFn, err := ledger.NewService(context.Background())
+	if err != nil {
+		t.Skipf("database is not available: %v", err)
+	}
+	t.Cleanup(func() { _ = closeFn() })
+	return svc
+}
+
+// собирает маршруты с обработчиками поверх переданного сервиса
+func newTestMux(svc ledger.Service) *http.ServeMux {
 	mux := http.NewServeMux()
-	RegisterRoutes(mux)
+	RegisterRoutes(mux, NewHandler(svc))
 	return mux
 }
 
@@ -31,21 +44,17 @@ func do(t *testing.T, h http.Handler, method, path, body string) *httptest.Respo
 	return rec
 }
 
-// testCategory пропускает тест, если БД недоступна, и возвращает уникальную
-// категорию, данные которой удаляются после теста.
+// testCategory пропускает тест, если БД недоступна, и возвращает уникальную категорию, данные которой удаляются после теста
 func testCategory(t *testing.T) string {
 	t.Helper()
-	if _, err := ledger.ListBudgets(); err != nil {
-		t.Skipf("database is not available: %v", err)
-	}
 	category := fmt.Sprintf("test-%d", time.Now().UnixNano())
 	t.Cleanup(func() { _ = ledger.DeleteCategory(category) })
 	return category
 }
 
-func countByCategory(t *testing.T, category string) int {
+func countByCategory(t *testing.T, svc ledger.Service, category string) int {
 	t.Helper()
-	list, err := ledger.ListTransactions()
+	list, err := svc.ListTransactions(context.Background())
 	require.NoError(t, err)
 	n := 0
 	for _, tx := range list {
@@ -57,10 +66,9 @@ func countByCategory(t *testing.T, category string) int {
 }
 
 func TestCreateAndListBudgets(t *testing.T) {
-	ledger.Reset()
-	t.Cleanup(ledger.Reset)
+	svc := newTestService(t)
 	category := testCategory(t)
-	mux := newTestMux()
+	mux := newTestMux(svc)
 
 	// POST
 	rec := do(t, mux, http.MethodPost, "/api/budgets", fmt.Sprintf(`{"category":%q,"limit":5000}`, category))
@@ -101,10 +109,7 @@ func TestCreateBudgetBadRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ledger.Reset()
-			t.Cleanup(ledger.Reset)
-
-			rec := do(t, newTestMux(), http.MethodPost, "/api/budgets", tt.body)
+			rec := do(t, newTestMux(nil), http.MethodPost, "/api/budgets", tt.body)
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
 			assert.Equal(t, jsonCT, rec.Header().Get("Content-Type"))
 
@@ -116,10 +121,9 @@ func TestCreateBudgetBadRequest(t *testing.T) {
 }
 
 func TestTransactionsFlow(t *testing.T) {
-	ledger.Reset()
-	t.Cleanup(ledger.Reset)
+	svc := newTestService(t)
 	category := testCategory(t)
-	mux := newTestMux()
+	mux := newTestMux(svc)
 
 	rec := do(t, mux, http.MethodPost, "/api/budgets", fmt.Sprintf(`{"category":%q,"limit":5000}`, category))
 	require.Equal(t, http.StatusCreated, rec.Code)
@@ -154,7 +158,7 @@ func TestTransactionsFlow(t *testing.T) {
 		var resp map[string]string
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 		assert.Equal(t, "budget exceeded", resp["error"])
-		assert.Equal(t, 1, countByCategory(t, category))
+		assert.Equal(t, 1, countByCategory(t, svc, category))
 	})
 
 	t.Run("bad_json", func(t *testing.T) {
@@ -169,8 +173,9 @@ func TestTransactionsFlow(t *testing.T) {
 }
 
 func TestReportSummary(t *testing.T) {
+	svc := newTestService(t)
 	category := testCategory(t)
-	mux := newTestMux()
+	mux := newTestMux(svc)
 
 	// уникальная дата, чтобы не попасть на закешированный ранее отчёт
 	day := fmt.Sprintf("%04d-01-01", 2100+time.Now().UnixNano()%800)
@@ -202,7 +207,7 @@ func TestReportSummaryBadRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := do(t, newTestMux(), http.MethodGet, "/api/reports/summary"+tt.query, "")
+			rec := do(t, newTestMux(nil), http.MethodGet, "/api/reports/summary"+tt.query, "")
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
 			assert.Equal(t, jsonCT, rec.Header().Get("Content-Type"))
 
@@ -212,4 +217,3 @@ func TestReportSummaryBadRequest(t *testing.T) {
 		})
 	}
 }
-

@@ -1,13 +1,32 @@
 # gateway
 
 Простой HTTP-сервис для учёта транзакций и бюджетов (DTO-слой `internal/api`
-поверх доменной библиотеки `ledger`).
+поверх сервиса `ledger`).
 
-Gateway обращается к тем же HTTP-эндпоинтам, что и раньше, — контракты не изменились.
-Разница внутри: **Ledger теперь хранит данные в PostgreSQL** (данные переживают перезапуск),
-а **отчёты кешируются в Redis** на 30 секунд. Добавлен эндпоинт отчёта
-`GET /api/reports/summary`. Подключение к БД и Redis ledger выполняет сам при первом запросе,
-код gateway для этого не нужен.
+HTTP-контракты, DTO и формат ошибок не изменились. Gateway не знает про базу данных:
+он получает готовый сервис через фабрику ledger и вызывает его методы.
+Данные хранятся в PostgreSQL, отчёты кешируются в Redis на 30 секунд.
+
+## Инициализация сервиса
+
+Gateway зависит только от интерфейса `ledger.Service` и фабрики `ledger.NewService` —
+он не импортирует `database/sql`, `pgx`, `ledger/internal/...` и репозитории.
+
+Структура:
+
+```
+gateway/
+├── main.go                  # инициализация сервиса, маршруты, запуск HTTP-сервера
+└── internal/api/
+    ├── handler.go           # тип Handler{svc ledger.Service}, NewHandler, HTTP-обработчики
+    ├── routes.go            # RegisterRoutes(mux, h)
+    ├── dto.go               # DTO запросов/ответов и преобразование в доменные модели
+    └── handlers_test.go     # тесты обработчиков через httptest
+```
+
+В обработчиках вызываются методы сервиса (`SetBudget`, `ListBudgets`, `AddTransaction`,
+`ListTransactions`) с контекстом запроса `r.Context()`. Отчёт `GET /api/reports/summary`
+пока вызывает `ledger.GetReportSummary` напрямую (в сервис не перенесён).
 
 ## Подготовка
 
@@ -22,8 +41,8 @@ set -a; source ../ledger/.env; set +a   # переменные подключе�
 go run .
 ```
 
-Сервис слушает порт **8083**. Остановка: `Ctrl+C`. При первом запросе к `/api/...`
-в логе появятся `Connected to database` и `Connected to Redis`.
+Сервис слушает порт **8083**. Остановка: `Ctrl+C`. При старте в логе появится
+`Connected to database`. Если БД недоступна, gateway пишет ошибку и сразу завершается.
 
 ## Эндпоинты
 
@@ -169,17 +188,18 @@ curl -i -X POST http://localhost:8083/api/transactions \
 `400 Bad Request`:
 
 ```json
-{"error":"Amount must be greater than 0!"}
+{"error":"amount must be greater than 0!"}
 ```
 
 ## Тесты
 
 Интеграционные тесты HTTP-обработчиков лежат в `internal/api/handlers_test.go`.
-Они собирают роутер через `RegisterRoutes` и отправляют запросы с помощью
+Они получают сервис через `ledger.NewService`, собирают роутер через
+`RegisterRoutes(mux, NewHandler(svc))` и отправляют запросы с помощью
 `httptest.NewRequest` + `httptest.NewRecorder` (настоящий порт не нужен).
 Проверяются коды ответов (201, 200, 400, 409), JSON-тело и заголовок `Content-Type`.
-Перед каждым сценарием вызывается `ledger.Reset()`. Сценарии, которые пишут данные,
-требуют запущенного PostgreSQL и загруженного `../ledger/.env`.
+Сценарии, которые пишут данные, требуют запущенного PostgreSQL и загруженного `../ledger/.env`
+(без БД они пропускаются). Тестам на `400` сервис не нужен.
 
 ```bash
 cd my_app/gateway

@@ -5,23 +5,21 @@ import (
 	"context"
 	"fmt"
 	"ledger"
+	"ledger/internal/app"
 	"ledger/internal/cache"
-	"ledger/internal/db"
 	"os"
 )
 
 func main() {
 	fmt.Println("Ledger service started")
 
-	conn, err := db.Connect()
+	ctx := context.Background()
+	svc, closeFn, err := app.New(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not connect to db, error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Could not init ledger: %v\n", err)
 		os.Exit(1)
 	}
-
-	defer conn.Close()
-
-	ledger.InitDB(conn)
+	defer closeFn()
 	fmt.Println("Connected to database")
 
 	rdb, err := cache.Connect()
@@ -59,19 +57,19 @@ func main() {
 		fmt.Println("Budget is valid")
 	}
 
-	ledger.SetBudget(ledger.Budget{
+	svc.SetBudget(ctx, ledger.Budget{
 		Category: "food",
 		Limit:    5000.0,
 		Period:   "2026/10",
 	})
 
-	ledger.SetBudget(ledger.Budget{
+	svc.SetBudget(ctx, ledger.Budget{
 		Category: "electronics",
 		Limit:    100000.0,
 		Period:   "2026/10",
 	})
 
-	ledger.SetBudget(ledger.Budget{
+	svc.SetBudget(ctx, ledger.Budget{
 		Category: "furniture",
 		Limit:    200000.0,
 		Period:   "2026/10",
@@ -84,37 +82,36 @@ func main() {
 	}
 	defer f.Close()
 
-	err = ledger.LoadBudgets(bufio.NewReader(f))
+	err = ledger.LoadBudgets(ctx, svc, bufio.NewReader(f))
 
 	if err != nil {
 		fmt.Println("file can not be read:", err)
 		return
 	}
 
-	err = ledger.AddTransaction(ledger.Transaction{1, 3000.0, "food", "покупка", "2026-10-01"})
+	_, err = svc.AddTransaction(ctx, ledger.Transaction{1, 3000.0, "food", "покупка", "2026-10-01"})
 	if err != nil {
 		fmt.Println("Transaction has been rejected:", err)
 	}
-	err = ledger.AddTransaction(ledger.Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
+	_, err = svc.AddTransaction(ctx, ledger.Transaction{2, 60000.0, "electronics", "profit", "2026-10-11"})
 	if err != nil {
 		fmt.Println("Transaction has been rejected:", err)
 	}
-	err = ledger.AddTransaction(ledger.Transaction{3, 60000.0, "electronics", "profit", "2026-10-11"})
+	_, err = svc.AddTransaction(ctx, ledger.Transaction{3, 60000.0, "electronics", "profit", "2026-10-11"})
 	if err != nil {
 		fmt.Println("Transaction has been rejected:", err)
 	}
-	err = ledger.AddTransaction(ledger.Transaction{4, 0, "profit", "profit", "2026-10-11"})
+	_, err = svc.AddTransaction(ctx, ledger.Transaction{4, 0, "profit", "profit", "2026-10-11"})
 	if err != nil {
 		fmt.Println("Transaction has been rejected:", err)
 	}
-	err = ledger.AddTransaction(ledger.Transaction{5, 50.0, "profit", "profit", "2026-10-12"})
+	_, err = svc.AddTransaction(ctx, ledger.Transaction{5, 50.0, "profit", "profit", "2026-10-12"})
 	if err != nil {
 		fmt.Println("Transaction has been rejected:", err)
 	}
 
-	fmt.Println(ledger.ListTransactions())
+	fmt.Println(svc.ListTransactions(ctx))
 
-	ctx := context.Background()
 	ledger.GetReportSummary(ctx, "2026-01-01", "2026-05-01")
 	ledger.GetReportSummary(ctx, "2026-01-01", "2026-05-01")
 }

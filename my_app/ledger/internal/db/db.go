@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -29,7 +30,7 @@ func buildDSN() string {
 	)
 }
 
-func Connect() (*sql.DB, error) {
+func Connect(ctx context.Context) (*sql.DB, error) {
 
 	DATABASE_URL := buildDSN()
 
@@ -42,7 +43,7 @@ func Connect() (*sql.DB, error) {
 	conn.SetMaxIdleConns(5)
 	conn.SetConnMaxLifetime(30 * time.Minute)
 
-	if err := conn.Ping(); err != nil {
+	if err := conn.PingContext(ctx); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("unable to connect to database: %w", err)
 	}

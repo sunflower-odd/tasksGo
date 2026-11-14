@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -21,9 +22,9 @@ func testCategory(t *testing.T) string {
 	return category
 }
 
-func countByCategory(t *testing.T, category string) int {
+func countByCategory(t *testing.T, svc Service, category string) int {
 	t.Helper()
-	list, err := ListTransactions()
+	list, err := svc.ListTransactions(context.Background())
 	require.NoError(t, err)
 	n := 0
 	for _, tx := range list {
@@ -187,20 +188,24 @@ func TestBudgetValidate(t *testing.T) {
 }
 
 func TestBudgetLimit(t *testing.T) {
-	Reset()
-	t.Cleanup(Reset)
+	ctx := context.Background()
+	svc, closeFn, err := NewService(ctx)
+	if err != nil {
+		t.Skipf("no database: %v", err)
+	}
+	t.Cleanup(func() { closeFn() })
 	category := testCategory(t)
 
-	err := SetBudget(Budget{Category: category, Limit: 5000})
+	err = svc.SetBudget(ctx, Budget{Category: category, Limit: 5000})
 	assert.NoError(t, err)
 
 	// в пределах лимита
-	err = AddTransaction(Transaction{Amount: 3000, Category: category, Date: "2026-10-30"})
+	_, err = svc.AddTransaction(ctx, Transaction{Amount: 3000, Category: category, Date: "2026-10-30"})
 	assert.NoError(t, err)
-	assert.Equal(t, 1, countByCategory(t, category))
+	assert.Equal(t, 1, countByCategory(t, svc, category))
 
 	// 3000 + 2500 > 5000 — превышение, запись не добавляется
-	err = AddTransaction(Transaction{Amount: 2500, Category: category, Date: "2026-10-30"})
+	_, err = svc.AddTransaction(ctx, Transaction{Amount: 2500, Category: category, Date: "2026-10-30"})
 	assert.ErrorIs(t, err, ErrBudgetExceeded)
-	assert.Equal(t, 1, countByCategory(t, category))
+	assert.Equal(t, 1, countByCategory(t, svc, category))
 }

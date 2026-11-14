@@ -31,7 +31,16 @@ func Logger(next http.Handler) http.Handler {
 	})
 }
 
-func createTransaction(w http.ResponseWriter, r *http.Request) {
+// HTTP-обработчики
+type Handler struct {
+	svc ledger.Service
+}
+
+func NewHandler(svc ledger.Service) *Handler {
+	return &Handler{svc: svc}
+}
+
+func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 	// читаем
 	var req CreateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -51,7 +60,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := ledger.CreateTransaction(tx)
+	created, err := h.svc.AddTransaction(r.Context(), tx)
 	if err != nil {
 		if errors.Is(err, ledger.ErrBudgetExceeded) {
 			writeError(w, http.StatusConflict, err.Error())
@@ -63,7 +72,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, TransactionFromDomain(created))
 }
 
-func createBudget(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) createBudget(w http.ResponseWriter, r *http.Request) {
 	var req CreateBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -81,15 +90,15 @@ func createBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := ledger.SetBudget(b); err != nil {
+	if err := h.svc.SetBudget(r.Context(), b); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, BudgetFromDomain(b))
 }
 
-func getTransactions(w http.ResponseWriter, r *http.Request) {
-	transactions, err := ledger.ListTransactions()
+func (h *Handler) getTransactions(w http.ResponseWriter, r *http.Request) {
+	transactions, err := h.svc.ListTransactions(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -103,8 +112,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func getBudgets(w http.ResponseWriter, r *http.Request) {
-	budgets, err := ledger.ListBudgets()
+func (h *Handler) getBudgets(w http.ResponseWriter, r *http.Request) {
+	budgets, err := h.svc.ListBudgets(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -120,7 +129,7 @@ func getBudgets(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Суммы трат по категориям за период. Результат кешируется в Redis внутри ledger.
-func getReportSummary(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) getReportSummary(w http.ResponseWriter, r *http.Request) {
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
 	if from == "" || to == "" {
