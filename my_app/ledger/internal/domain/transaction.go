@@ -17,6 +17,7 @@ type ExpenseRepository interface {
 	List(ctx context.Context) ([]Transaction, error)
 	Add(ctx context.Context, tx Transaction) (int, error)
 	SumByCategory(ctx context.Context, category string) (float64, error)
+	TotalsByCategory(ctx context.Context, from, to string) (map[string]float64, error)
 }
 
 func (tx Transaction) Validate() error {

@@ -64,3 +64,31 @@ func (r *ExpenseRepo) SumByCategory(ctx context.Context, category string) (float
 	}
 	return total, nil
 }
+
+func (r *ExpenseRepo) TotalsByCategory(ctx context.Context, from, to string) (map[string]float64, error) {
+	totals := make(map[string]float64)
+	rows, err := r.db.QueryContext(ctx,
+		"SELECT category, sum(amount) as Amount FROM expenses WHERE date>=$1 AND date<=$2 GROUP BY category ORDER BY category", from, to,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("expenses for the period %q–%q: %w", from, to, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var category string
+		var amount float64
+
+		if err := rows.Scan(&category, &amount); err != nil {
+			return nil, fmt.Errorf("scan category totals: %w", err)
+		}
+		totals[category] = amount
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read category totals: %w", err)
+	}
+
+	return totals, nil
+}

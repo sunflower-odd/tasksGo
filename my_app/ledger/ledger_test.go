@@ -10,13 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testCategory подключается к БД (или пропускает тест, если БД недоступна)
-// и возвращает уникальную категорию, которая удаляется после теста.
 func testCategory(t *testing.T) string {
 	t.Helper()
-	if err := ensureConn(); err != nil {
-		t.Skipf("database is not available: %v", err)
+
+	ctx := context.Background()
+	_, closeFn, err := NewService(ctx)
+	if err != nil {
+		t.Skipf("no database: %v", err) // пропускаем тест при недоступной БД
 	}
+	t.Cleanup(func() { _ = closeFn() }) // после теста закрываем созданные подключения к БД и Redis
+
 	category := fmt.Sprintf("test-%d", time.Now().UnixNano())
 	t.Cleanup(func() { _ = DeleteCategory(category) })
 	return category

@@ -207,7 +207,16 @@ func TestReportSummaryBadRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := do(t, newTestMux(nil), http.MethodGet, "/api/reports/summary"+tt.query, "")
+			var svc ledger.Service
+			if tt.query != "" {
+				// проверка дат выполняется в сервисе, без БД тест пропускается
+				svc = newTestService(t)
+			}
+
+			// случай no params проверяется без сервиса и БД
+			rec := do(t, newTestMux(svc), http.MethodGet,
+				"/api/reports/summary"+tt.query, "")
+
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
 			assert.Equal(t, jsonCT, rec.Header().Get("Content-Type"))
 

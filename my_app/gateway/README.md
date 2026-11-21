@@ -25,8 +25,7 @@ gateway/
 ```
 
 В обработчиках вызываются методы сервиса (`SetBudget`, `ListBudgets`, `AddTransaction`,
-`ListTransactions`) с контекстом запроса `r.Context()`. Отчёт `GET /api/reports/summary`
-пока вызывает `ledger.GetReportSummary` напрямую (в сервис не перенесён).
+`ListTransactions`, `GetReportSummary`) с контекстом запроса `r.Context()`.
 
 ## Подготовка
 
@@ -199,7 +198,8 @@ curl -i -X POST http://localhost:8083/api/transactions \
 `httptest.NewRequest` + `httptest.NewRecorder` (настоящий порт не нужен).
 Проверяются коды ответов (201, 200, 400, 409), JSON-тело и заголовок `Content-Type`.
 Сценарии, которые пишут данные, требуют запущенного PostgreSQL и загруженного `../ledger/.env`
-(без БД они пропускаются). Тестам на `400` сервис не нужен.
+(без БД они пропускаются). Проверки формата и порядка дат отчёта также требуют сервиса и БД;
+проверка отсутствующих параметров выполняется без них.
 
 ```bash
 cd my_app/gateway

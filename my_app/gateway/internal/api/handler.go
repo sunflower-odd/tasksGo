@@ -137,7 +137,7 @@ func (h *Handler) getReportSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := ledger.GetReportSummary(r.Context(), from, to)
+	report, err := h.svc.GetReportSummary(r.Context(), from, to)
 	if err != nil {
 		if errors.Is(err, ledger.ErrInvalidPeriod) {
 			writeError(w, http.StatusBadRequest, err.Error())
