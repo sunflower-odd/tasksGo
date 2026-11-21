@@ -92,3 +92,34 @@ func (r *ExpenseRepo) TotalsByCategory(ctx context.Context, from, to string) (ma
 
 	return totals, nil
 }
+
+func (r *ExpenseRepo) GetUniqueCategories(ctx context.Context) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT DISTINCT category FROM expenses ORDER BY category")
+	if err != nil {
+		return nil, fmt.Errorf("get unique categories: %w", err)
+	}
+	defer rows.Close()
+	categories := make([]string, 0)
+	for rows.Next() {
+		var category string
+		if err := rows.Scan(&category); err != nil {
+			return nil, fmt.Errorf("scan category: %w", err)
+		}
+		categories = append(categories, category)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("get unique categories: %w", err)
+	}
+	return categories, nil
+}
+
+func (r *ExpenseRepo) TotalByCategory(ctx context.Context, category string, from, to string) (float64, error) {
+	var total float64
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(SUM(amount),0) FROM expenses WHERE category=$1 AND date>=$2 AND date<=$3", category, from, to,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum expenses for category %q: %w", category, err)
+	}
+	return total, nil
+}

@@ -37,7 +37,8 @@ func LoadBudgets(ctx context.Context, svc Service, r io.Reader) error {
 	return nil
 }
 
-// DeleteCategory удаляет бюджет и все траты категории (используется тестами для очистки).
+// DeleteCategory удаляет бюджет и все траты категории (используется тестами для очистки)
+// тк используется только в тестах - можно не принимать контекст тут
 func DeleteCategory(category string) error {
 
 	myConn, err := db.Connect(context.Background())

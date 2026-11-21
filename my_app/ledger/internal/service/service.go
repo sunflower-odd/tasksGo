@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"sync"
+	"time"
 
 	"ledger/internal/domain"
-	"time"
 )
 
 type FinanceService interface {
@@ -42,15 +44,81 @@ func (s *financeService) GetReportSummary(ctx context.Context, from string, to s
 		return domain.Report{}, fmt.Errorf("%w: end date earlier than start date of the report", domain.ErrInvalidPeriod)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return domain.Report{}, err
+	}
 	if s.cache != nil {
 		if report, found := s.cache.Get(ctx, from, to); found {
+			if err := ctx.Err(); err != nil {
+				return domain.Report{}, err
+			}
 			return report, nil
 		}
 	}
 
-	totals, err := s.expenses.TotalsByCategory(ctx, from, to)
+	categories, err := s.expenses.GetUniqueCategories(ctx)
 	if err != nil {
 		return domain.Report{}, fmt.Errorf("create reports: %w", err)
+	}
+
+	type categoryResult struct {
+		total float64
+		err   error
+	}
+	results := make([]categoryResult, len(categories))
+	// Один heartbeat на весь расчёт; каналы сигнализируют об окончании расчёта и выходе фоновой горутины.
+	calculationDone := make(chan struct{})
+	heartbeatDone := make(chan struct{})
+	go func() {
+		defer close(heartbeatDone)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		// Фиксируем остановку тикера до уведомления о завершении heartbeat.
+		defer func() {
+			ticker.Stop()
+			log.Print("report heartbeat stopped")
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("report heartbeat canceled via ctx.Done(): %v", ctx.Err())
+				return
+			case <-calculationDone:
+				return
+			case <-ticker.C:
+				log.Print("report calculation in progress")
+			}
+		}
+	}()
+	var wg sync.WaitGroup
+	for i, category := range categories {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(index int, category string) {
+			defer wg.Done()
+			if err := ctx.Err(); err != nil {
+				results[index].err = err
+				return
+			}
+			results[index].total, results[index].err = s.expenses.TotalByCategory(ctx, category, from, to)
+		}(i, category)
+	}
+	wg.Wait()
+	// Останавливаем heartbeat и ждём его выхода, прежде чем обрабатывать результаты или возвращать ошибку.
+	close(calculationDone)
+	<-heartbeatDone
+	if err := ctx.Err(); err != nil {
+		// Wait завершён: все рабочие горутины уже вышли
+		log.Printf("report calculation canceled via ctx.Done(): %v; all workers finished", err)
+		return domain.Report{}, err
+	}
+	totals := make(map[string]float64, len(categories))
+	for i, result := range results {
+		if result.err != nil {
+			return domain.Report{}, fmt.Errorf("create report for category %q: %w", categories[i], result.err)
+		}
+		totals[categories[i]] = result.total
 	}
 
 	report := domain.Report{
@@ -61,6 +129,9 @@ func (s *financeService) GetReportSummary(ctx context.Context, from string, to s
 
 	if s.cache != nil {
 		s.cache.Set(ctx, report)
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.Report{}, err
 	}
 
 	return report, nil

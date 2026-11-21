@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"ledger"
@@ -29,6 +30,16 @@ func Logger(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		log.Printf("%s %s %s", r.Method, r.URL.Path, duration)
 	})
+}
+
+func writeContextError(w http.ResponseWriter, r *http.Request) bool {
+	err := r.Context().Err()
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) {
+		writeError(w, http.StatusGatewayTimeout, "request canceled or timed out")
+		return true
+	}
+	return false
 }
 
 // HTTP-обработчики
@@ -61,6 +72,9 @@ func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	created, err := h.svc.AddTransaction(r.Context(), tx)
+	if writeContextError(w, r) {
+		return
+	}
 	if err != nil {
 		if errors.Is(err, ledger.ErrBudgetExceeded) {
 			writeError(w, http.StatusConflict, err.Error())
@@ -74,6 +88,7 @@ func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createBudget(w http.ResponseWriter, r *http.Request) {
 	var req CreateBudgetRequest
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -90,7 +105,11 @@ func (h *Handler) createBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.SetBudget(r.Context(), b); err != nil {
+	err = h.svc.SetBudget(r.Context(), b)
+	if writeContextError(w, r) {
+		return
+	}
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -99,6 +118,9 @@ func (h *Handler) createBudget(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getTransactions(w http.ResponseWriter, r *http.Request) {
 	transactions, err := h.svc.ListTransactions(r.Context())
+	if writeContextError(w, r) {
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -114,6 +136,9 @@ func (h *Handler) getTransactions(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getBudgets(w http.ResponseWriter, r *http.Request) {
 	budgets, err := h.svc.ListBudgets(r.Context())
+	if writeContextError(w, r) {
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -136,8 +161,10 @@ func (h *Handler) getReportSummary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "query parameters from and to are required (YYYY-MM-DD)")
 		return
 	}
-
 	report, err := h.svc.GetReportSummary(r.Context(), from, to)
+	if writeContextError(w, r) {
+		return
+	}
 	if err != nil {
 		if errors.Is(err, ledger.ErrInvalidPeriod) {
 			writeError(w, http.StatusBadRequest, err.Error())
