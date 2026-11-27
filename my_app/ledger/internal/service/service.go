@@ -20,13 +20,14 @@ type FinanceService interface {
 }
 
 type financeService struct {
-	budgets  domain.BudgetRepository
-	expenses domain.ExpenseRepository
-	cache    domain.ReportCache
+	budgets      domain.BudgetRepository
+	expenses     domain.ExpenseRepository
+	cache        domain.ReportCache
+	cacheBudgets domain.BudgetCache
 }
 
-func New(budgets domain.BudgetRepository, expenses domain.ExpenseRepository, reportCache domain.ReportCache) FinanceService {
-	return &financeService{budgets: budgets, expenses: expenses, cache: reportCache}
+func New(budgets domain.BudgetRepository, expenses domain.ExpenseRepository, reportCache domain.ReportCache, budgetsCache domain.BudgetCache) FinanceService {
+	return &financeService{budgets: budgets, expenses: expenses, cache: reportCache, cacheBudgets: budgetsCache}
 }
 
 func (s *financeService) GetReportSummary(ctx context.Context, from string, to string) (domain.Report, error) {
@@ -146,7 +147,25 @@ func (s *financeService) SetBudget(ctx context.Context, b domain.Budget) error {
 }
 
 func (s *financeService) ListBudgets(ctx context.Context) ([]domain.Budget, error) {
-	return s.budgets.List(ctx)
+	if s.cacheBudgets != nil {
+		if budgets, found := s.cacheBudgets.GetBudgets(ctx); found {
+			if err := ctx.Err(); err != nil {
+				return []domain.Budget{}, err
+			}
+			return budgets, nil
+		}
+	}
+
+	budgets, err := s.budgets.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.cacheBudgets != nil {
+		s.cacheBudgets.SetBudgets(ctx, budgets)
+	}
+
+	return budgets, nil
 }
 
 func (s *financeService) ListTransactions(ctx context.Context) ([]domain.Transaction, error) {

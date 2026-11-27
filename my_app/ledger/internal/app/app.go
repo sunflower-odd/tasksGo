@@ -18,16 +18,18 @@ func New(ctx context.Context) (service.FinanceService, func() error, error) {
 	}
 
 	var reportCache domain.ReportCache
+	var budgetCache domain.BudgetCache
 	redisConn, err := cache.Connect()
 	if err != nil {
 		fmt.Printf("redis unavailable, working without cache: %v", err)
 	} else {
 		reportCache = cache.NewReportCache(redisConn)
+		budgetCache = cache.NewBudgetCache(redisConn)
 	}
 
 	budgetRepo := pg.NewBudgetRepo(conn)
 	expenseRepo := pg.NewExpenseRepo(conn)
-	svc := service.New(budgetRepo, expenseRepo, reportCache)
+	svc := service.New(budgetRepo, expenseRepo, reportCache, budgetCache)
 	closeFn := func() error {
 		dbErr := conn.Close()
 		var redisErr error

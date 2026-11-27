@@ -58,7 +58,7 @@ func TestReportCalculatesCategoriesConcurrently(t *testing.T) {
 			return 40, nil
 		},
 	}
-	report, err := New(nil, repo, nil).GetReportSummary(ctx, "2026-10-01", "2026-10-31")
+	report, err := New(nil, repo, nil, nil).GetReportSummary(ctx, "2026-10-01", "2026-10-31")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestReportWaitsForCanceledWorkers(t *testing.T) {
 			return 0, ctx.Err()
 		},
 	}
-	_, err := New(nil, repo, nil).GetReportSummary(ctx, "2026-10-01", "2026-10-31")
+	_, err := New(nil, repo, nil, nil).GetReportSummary(ctx, "2026-10-01", "2026-10-31")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation, got %v", err)
 	}
@@ -107,7 +107,7 @@ func TestReportReturnsWorkerError(t *testing.T) {
 			return 0, want
 		},
 	}
-	_, err := New(nil, repo, nil).GetReportSummary(context.Background(), "2026-10-01", "2026-10-31")
+	_, err := New(nil, repo, nil, nil).GetReportSummary(context.Background(), "2026-10-01", "2026-10-31")
 	if !errors.Is(err, want) {
 		t.Fatalf("expected worker error, got %v", err)
 	}
@@ -117,7 +117,7 @@ func TestReportWithoutCategories(t *testing.T) {
 	repo := reportExpenses{
 		categories: func(context.Context) ([]string, error) { return nil, nil },
 	}
-	report, err := New(nil, repo, nil).GetReportSummary(context.Background(), "2026-10-01", "2026-10-31")
+	report, err := New(nil, repo, nil, nil).GetReportSummary(context.Background(), "2026-10-01", "2026-10-31")
 	if err != nil || report.Totals == nil || len(report.Totals) != 0 {
 		t.Fatalf("expected empty totals, got %+v, %v", report, err)
 	}
@@ -151,7 +151,7 @@ func TestReportHeartbeatStops(t *testing.T) {
 			}
 			finished := make(chan error, 1)
 			go func() {
-				_, err := New(nil, repo, nil).GetReportSummary(ctx, "2026-10-01", "2026-10-31")
+				_, err := New(nil, repo, nil, nil).GetReportSummary(ctx, "2026-10-01", "2026-10-31")
 				finished <- err
 			}()
 			select {

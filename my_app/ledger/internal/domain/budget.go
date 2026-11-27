@@ -17,6 +17,11 @@ type BudgetRepository interface {
 	List(ctx context.Context) ([]Budget, error)
 }
 
+type BudgetCache interface {
+	GetBudgets(ctx context.Context) ([]Budget, bool) // bool = нашли в кеше
+	SetBudgets(ctx context.Context, r []Budget)
+}
+
 func (b Budget) Validate() error {
 	if b.Limit <= 0 {
 		return errors.New("Limit must be greater than 0!")
